@@ -149,7 +149,230 @@
                 
                 <section>
                     <section data-markdown>
-                        
+                        ##But Doesn't Faust Already compile to web audio?
+                    </section>
+                    <section data-markdown>
+                        ##Sure
+                    </section>
+                    <section data-markdown>
+                        ##But does it work?
+                        [Current Faust2Webaudio Noise](examples/current-noise.html)
+                    </section>
+                </section>
+                
+                <section>
+                    <section data-markdown>
+                        ##Why did that break?
+                    </section>
+                    <section data-markdown>
+                        There is only one answer...
+                    </section>
+                    <section data-markdown>
+                        #JavaScript
+                    </section>
+                </section>
+                
+                <section>
+                    <section data-markdown>
+                        ##Before we start a flame war
+                        ![Flame War](img/flame_war.gif)
+                    </section>
+                    <section data-markdown>
+                        #I freaking love JavaScript
+                    </section>
+                    <section data-markdown>
+                        ##But there are some things it can't do... 
+                    </section>
+                    <section data-markdown>
+                        #Like Integers
+                    </section>
+                </section>
+                
+                <section>
+                    <section data-markdown>
+                        ##asm.js to the rescue!
+                        [![asm.js](http://static.techspot.com/images2/news/thumbs/2013-05-23-teasercc7.jpg)](http://asmjs.org/)
+                    </section>
+                    <section data-markdown>
+                        This specification defines asm.js, a strict subset of JavaScript that can be used as a low-level, efficient target language for compilers. The asm.js language provides an abstraction similar to the C/C++ virtual machine: a large binary heap with efficient loads and stores, integer and floating-point arithmetic, first-order function definitions, and function pointers.
+                    </section>
+                </section>
+                
+                <section>
+                    <section data-markdown>
+                        ##What does an asm.js WebAudioNode look like?
+                        An example from the asmjs Flocking Branch
+                        ```
+                        flock.ugen.asmSin.module = function (stdlib, foreign, heap) {
+                            "use asm";
+    
+                            var sin = stdlib.Math.sin;
+                            var pi = 3.14159;
+                            var out = new stdlib.Float32Array(heap);
+    
+                            function gen (numSamps, freq, phaseOffset, mul, add, sampleRate, phase) {
+                                numSamps = numSamps|0;
+                                freq = +freq;
+                                phaseOffset = +phaseOffset;
+                                mul = +mul;
+                                add = +add;
+                                sampleRate = +sampleRate;
+                                phase = +phase;
+             
+                                var i = 0;
+        
+                                for (; (i | 0) < (numSamps | 0); i = i + 1 | 0) {
+                                    out[i >> 2] = +(sin(phase + phaseOffset) * mul + add);
+                                    phase = +(phase + (freq / sampleRate * pi * 2.0));
+                                }
+        
+                                return +phase;
+                            }
+    
+                            return {
+                                gen: gen
+                            };
+                        };
+                        ```
+                    </section>
+                </section>
+                
+                <section>
+                    <section data-markdown>
+                        ##So this is all great, but I don't want to hand roll asm.js like a sucker...
+                    </section>
+                </section>
+                <section>
+                    <section data-markdown>
+                        ##Introducing
+                        [![Emscripten](img/emscripten.jpg)](http://emscripten.org/)
+                    </section>
+                    <section data-markdown>
+                        Emscripten is an LLVM to JavaScript compiler. It takes LLVM bitcode (which can be generated from C/C++ using Clang, or any other language that can be converted into LLVM bitcode) and compiles that into JavaScript, which can be run on the web (or anywhere else JavaScript can run).
+                    </section>
+                </section>
+                
+                <section>
+                    <section data-markdown>
+                        ##Faust -> C++
+                        So using the faust compiler (specifically the faust2-asmjs branch) we can compile from [faust](https://gist.github.com/TheAlphaNerd/5710239#file-noise-dsp) to [c++](https://gist.github.com/TheAlphaNerd/5710239#file-noise-emscripten-cpp) with the following command
+                        ```
+                        faust -a minimal.cpp noise.dsp -o noise.cpp
+                        ```
+                    </section>
+                    <section data-markdown>
+                        In order to get access to the verious parts of a c++ class via emscripten we need to write a simple wrapped on top of our Noise class.
+                        ```
+                        // Adapted From https://gist.github.com/camupod/5640386
+                        //compile using "C" linkage to avoid name obfuscation
+                        extern "C" {
+                            //constructor
+                            void *NOISE_constructor(int samplingFreq) {
+                                Noise* n = new Noise();
+                                n->init(samplingFreq);
+                                return n;
+                            }
+    
+                            FAUSTFLOAT **NOISE_compute(Noise *n, int count) {
+                                FAUSTFLOAT** input = 0;
+                                FAUSTFLOAT** output;
+        
+                                n->compute(count, input, output);
+        
+                                return output;
+                            }
+    
+                            int NOISE_getNumInputs(Noise *n){
+                                return 0;
+                            }
+    
+                            int NOISE_getNumOutputs(Noise *n){
+                                return n->getNumOutputs();
+                            }
+
+                            void NOISE_destructor(Noise *n) {
+                                delete n;
+                            }
+                        }
+                        ```
+                    </section>
+                    <section data-markdown>
+                        We can then compile the resulting c++ file to asm.js using emscripten with the following command
+                        ```
+                        emcc cpp/noise-emscripten.cpp -o js/noise-emscripten.js \
+                        -s EXPORTED_FUNCTIONS="['_NOISE_constructor','_NOISE_destructor', \
+                        '_NOISE_compute', '_NOISE_getNumInputs', '_NOISE_getNumOutputs']"
+                        ```
+                        Which creates this [JavaScript file](https://gist.github.com/TheAlphaNerd/5710239#file-noise-emscripten-js)
+                    </section>
+                    <section data-markdown>
+                        Finally we apply the following JavaScript wrapper in order to break out the functions we wrapped earlier in c++
+                        ```
+                        // Adapted From https://gist.github.com/camupod/5640386
+
+                        var faust = faust || {};
+
+                        (function() {
+    
+                            faust.context = new webkitAudioContext();
+    
+                            var NOISE_constructor = Module.cwrap('NOISE_constructor', 'number', 'number');
+                            var NOISE_destructor = Module.cwrap('NOISE_destructor', null, ['number']);
+                            var NOISE_compute = Module.cwrap('NOISE_compute', ['number'], ['number', 'number']);
+                            var NOISE_getNumInputs = Module.cwrap('NOISE_getNumInputs', 'number', []);
+                            var NOISE_getNumOutputs = Module.cwrap('NOISE_getNumOutputs', 'number', []);
+    
+                            faust.noise = function () {
+                                that = {};
+        
+                                that.ptr = NOISE_constructor(faust.context.sampleRate);
+        
+                                that.getNumInputs = function () {
+                                    return NOISE_getNumInputs();
+                                }
+
+                                that.getNumOutputs = function () {
+                                    return NOISE_getNumOutputs();
+                                }
+
+                                that.compute = function (count) {
+                                    return NOISE_compute(that.ptr, count);
+                                }
+
+                                that.destroy = function () {
+                                    NOISE_destructor(that.ptr);
+                                }
+        
+                                return that;
+                            }
+                        }())
+
+                        noise = faust.noise();
+                        ```
+                    </section>
+                    <section data-markdown>
+                        #Phew...
+                    </section>
+                </section>
+                
+                <section>
+                    <section data-markdown>
+                        #But does it work?
+                    </section>
+                    <section data-markdown>
+                        ##not exactly...
+                    </section>
+                </section>
+                
+                <section>
+                    <section data-markdown>
+                        Unfortunately some of the semantics of C++ do not translate perfectly to JavaScript, the unfortunate side effect of moving from an Object Oriented language to a Functional Language.
+                    </section>
+                </section>
+                
+                <section>
+                    <section data-markdown>
+                        ##But didn't you say Faust is Functional?
                     </section>
                 </section>
                 
