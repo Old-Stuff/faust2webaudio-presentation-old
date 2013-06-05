@@ -74,7 +74,7 @@
                         The [Web Audio Api](https://dvcs.w3.org/hg/audio/raw-file/tip/webaudio/specification.html) is a high-level JavaScript API for processing and synthesizing audio in web applications.  It is currently being spearheaded by Chris Rogers at Google.
                     </section>
                     <section data-markdown>
-                        The Web Audio API comes with a number of natively compile audio nodes capable of doing quite a bit of advanced synthesis.
+                        The Web Audio API comes with a number of natively compiled audio nodes capable of doing quite a bit of advanced synthesis.
                         
                         You can check out Hongchan's [WAAX](https://github.com/hoch/waax) library for an example of extensive work being done with native nodes.
                     </section>
@@ -87,8 +87,8 @@
                 
                 <section>
                     <section data-markdown>
+                        Introducing
                         ##The JavaScriptNode
-                        to the rescue
                     </section>
                     <section data-markdown>
                         The JavaScriptNode allows individuals to create their own web audio nodes in pure JavaScript.  This allows individuals to extend the Web Audio Api with custom nodes.
@@ -184,7 +184,7 @@
                         ##But there are some things it can't do... 
                     </section>
                     <section data-markdown>
-                        #Like Integers
+                        #Like Integer Arithmetic
                     </section>
                 </section>
                 
@@ -194,13 +194,14 @@
                         [![asm.js](http://static.techspot.com/images2/news/thumbs/2013-05-23-teasercc7.jpg)](http://asmjs.org/)
                     </section>
                     <section data-markdown>
-                        This specification defines asm.js, a strict subset of JavaScript that can be used as a low-level, efficient target language for compilers. The asm.js language provides an abstraction similar to the C/C++ virtual machine: a large binary heap with efficient loads and stores, integer and floating-point arithmetic, first-order function definitions, and function pointers.
+                        asm.js is a strict subset of JavaScript that can be used as a low-level, efficient target language for compilers. The asm.js language provides an abstraction similar to the C/C++ virtual machine: a large binary heap with efficient loads and stores, integer and floating-point arithmetic, first-order function definitions, and function pointers.
                     </section>
                 </section>
                 
                 <section>
                     <section data-markdown>
-                        ##What does an asm.js WebAudioNode look like?
+                        ##What does an asm.js 
+                        ##WebAudioNode look like?
                         An example from the asmjs Flocking Branch
                         ```
                         flock.ugen.asmSin.module = function (stdlib, foreign, heap) {
@@ -257,11 +258,11 @@
                         ##Faust -> C++
                         So using the faust compiler (specifically the faust2-asmjs branch) we can compile from [faust](https://gist.github.com/TheAlphaNerd/5710239#file-noise-dsp) to [c++](https://gist.github.com/TheAlphaNerd/5710239#file-noise-emscripten-cpp) with the following command
                         ```
-                        faust -a minimal.cpp noise.dsp -o noise.cpp
+                        faust -a minimal.cpp -i -cn Noise  dsp/noise.dsp -o cpp/noise-emscripten.cpp
                         ```
                     </section>
                     <section data-markdown>
-                        In order to get access to the verious parts of a c++ class via emscripten we need to write a simple wrapped on top of our Noise class.
+                        In order to get access to the verious parts of a c++ class via emscripten we need to write a simple wrapper on top of our Noise class.
                         ```
                         // Adapted From https://gist.github.com/camupod/5640386
                         //compile using "C" linkage to avoid name obfuscation
