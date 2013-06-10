@@ -1,3 +1,15 @@
+/*
+faust2webaduio
+
+Primarily written by Myles Borins
+During the Spring 2013 offering of Music 420b
+A Special thanks 
+
+faust2webaudio is distributed under the terms the MIT or GPL2 Licenses. 
+Choose the license that best suits your project. The text of the MIT and GPL 
+licenses are at the root directory. 
+
+*/
 // Note: Some Emscripten settings will significantly limit the speed of the generated code.
 // Note: Some Emscripten settings may limit the speed of the generated code.
 try {
@@ -11043,83 +11055,79 @@ if (Module['noInitialRun']) {
 run();
 // {{POST_RUN_ADDITIONS}}
   // {{MODULE_ADDITIONS}}
+/*global webkitAudioContext, Module, HEAPF32*/
+
 // Adapted From https://gist.github.com/camupod/5640386
 
 var faust = faust || {};
 
-(function() {
-    
+(function () {
+
     // This should be made to only make a new context if one does not exist
     faust.context = new webkitAudioContext();
-    
+
     var NOISE_constructor = Module.cwrap('NOISE_constructor', 'number', 'number');
     var NOISE_destructor = Module.cwrap('NOISE_destructor', null, ['number']);
     var NOISE_compute = Module.cwrap('NOISE_compute', ['number'], ['number', 'number']);
     var NOISE_getNumInputs = Module.cwrap('NOISE_getNumInputs', 'number', []);
     var NOISE_getNumOutputs = Module.cwrap('NOISE_getNumOutputs', 'number', []);
-    
+
     faust.noise = function () {
-        that = {};
-        
+        var that = {};
+
         that.ptr = NOISE_constructor(faust.context.sampleRate);
-        
+
         // Bind to C++ Member Functions
+
         that.getNumInputs = function () {
             return NOISE_getNumInputs(that.ptr);
-        }
+        };
 
         that.getNumOutputs = function () {
             return NOISE_getNumOutputs(that.ptr);
-        }
+        };
 
         that.compute = function (count) {
-            return faust.ptrToArray(NOISE_compute(that.ptr, count), count);
-        }
+            var ptr = NOISE_compute(that.ptr, count);
+            return HEAPF32.subarray(ptr>>2, (ptr+count*4)>>2);
+        };
 
         that.destroy = function () {
             NOISE_destructor(that.ptr);
-        }
-        
+        };
+
         // Bind to Web Audio
-        
+
         that.play = function () {
             that.jsNode.connect(faust.context.destination);
         };
-        
+
         that.pause = function () {
             that.jsNode.disconnect(faust.context.destination);
         };
-        
+
         that.generateSamples = function (e) {
             var output = e.outputBuffer.getChannelData(0);
             var noiseOutput = that.compute(output.length);
+            
+            // Is there a better way to do this?
+            // Seems rather harsh to have to replace each sample in the buffer
+            // One at a time
             for (var i = 0; i < output.length; i++) {
                 output[i] = noiseOutput[i];
             }
         };
-        
+
         that.init = function () {
             that.jsNode = faust.context.createJavaScriptNode(1024, 1, 1);
             that.jsNode.onaudioprocess = that.generateSamples;
-            that.play();
         };
-    
-        that.init();
-        
-        return that;
-    }
-    
-    /* This is Super duper nasty... THERE HAS TO BE A BETTER WAY TO GO FROM POINTER TO ARRAY */
-    
-    faust.ptrToArray = function(ptr, size) {
-        var a = [];
-        
-        for (var i = 0; i < size*4; i+=4) {
-            a.push(getValue(ptr+i, "float"));
-        }
-        
-        return a;
-    }
-}())
 
-noise = faust.noise();
+        that.init();
+
+        return that;
+    };
+}());
+
+var noise = faust.noise();
+noise.play();
