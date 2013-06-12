@@ -405,10 +405,10 @@
                 </section>
                 <section>
                     <section data-markdown>
-                        ###Managing memory in C++ in a way to maintain persistence when translated to JavaScript can be tricky.  
+                        ###Managing memory in C++ while maintaining persistence when translated to JavaScript can be tricky.  
                     </section>
                     <section data-markdown>
-                        ###Specifically because faust represents inputs and output as a Float **
+                        ###Specifically because faust represents inputs and outputs as a Float **
                     </section>
                     <section data-markdown>
                         That means the input and output variables are in fact a pointer to an array of channels
@@ -430,6 +430,9 @@
                     </section>
                     <section data-markdown>
                         ##Why should I be spending my time and memory managing these pointers?
+                    </section>
+                    <section data-markdown>
+                        ##How am I supposed to deal with the pointers in JavaScript land without creating lots of garbage?
                     </section>
                 </section>
                 
