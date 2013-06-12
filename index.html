@@ -87,7 +87,7 @@
                 
                 <section>
                     <section data-markdown>
-                        Introducing
+                        I present to you
                         ##The JavaScriptNode
                     </section>
                     <section data-markdown>
@@ -256,35 +256,57 @@
                 <section>
                     <section data-markdown>
                         ##Faust -> C++
-                        So using the faust compiler (specifically the faust2-asmjs branch) we can compile from [faust](https://gist.github.com/TheAlphaNerd/5710239#file-noise-dsp) to [c++](https://gist.github.com/TheAlphaNerd/5710239#file-noise-emscripten-cpp) with the following command
+                        So using the faust compiler (specifically the faust2-asmjs branch) we can compile from [faust](https://gist.github.com/TheAlphaNerd/5710239#file-noise-dsp) to [C++](https://gist.github.com/TheAlphaNerd/5710239#file-noise-emscripten-cpp) with the following command
                         ```
-                        faust -a minimal.cpp -i -cn Noise  dsp/noise.dsp -o cpp/noise-emscripten.cpp
+                        faust -a minimal.cpp -i -uim -cn Noise \
+                         dsp/noise.dsp -o cpp/faust-noise.cpp
                         ```
                     </section>
                     <section data-markdown>
-                        In order to get access to the verious parts of a c++ class via emscripten we need to write a simple wrapper on top of our Noise class.
+                        In order to get access to the verious parts of a C++ class via emscripten we need to write a simple wrapper on top of our Noise class.
                         ```
                         // Adapted From https://gist.github.com/camupod/5640386
-                        //compile using "C" linkage to avoid name obfuscation
+                        // compile using "C" linkage to avoid name obfuscation
                         extern "C" {
+                            float** fInChannel;
+                            float** fOutChannel;
+                            int numInputs;
+                            int numOutputs;
                             //constructor
-                            void *NOISE_constructor(int samplingFreq) {
+                            void *NOISE_constructor(int samplingFreq, int bufferSize) {
+                                // Make a new noise object
                                 Noise* n = new Noise();
+                                // Init it with samplingFreq supplied... should we give a sample size here too?
                                 n->init(samplingFreq);
+        
+                                // Lets get this once so we don't need to keep calculating every call to compute
+                                numInputs = n->getNumInputs();
+                                numOutputs = n->getNumOutputs();
+        
+                                // This Needs to be dealt with... curently only able to return a single buffer... rather
+                                // Way too mono...
+                                // This is due to the Channels not being properly initialized... need to look at how
+                                // Other architecture fiels do this a bit better
+                                for (int i = 0; i < numInputs; i++) {
+                                    fInChannel[i] = new float[bufferSize];
+                                }
+        
+                                for (int i = 0; i < numOutputs; i++) {
+                                    fOutChannel[i] = new float[bufferSize];
+                                }
                                 return n;
                             }
     
-                            FAUSTFLOAT **NOISE_compute(Noise *n, int count) {
-                                FAUSTFLOAT** input = 0;
-                                FAUSTFLOAT** output;
+                            FAUSTFLOAT *NOISE_compute(Noise *n, int count) {
+                                
+                                n->compute(count, fInChannel, fOutChannel);
         
-                                n->compute(count, input, output);
-        
-                                return output;
+                                // Returning due to problem as mentioend above... 
+                                return fOutChannel[0];
                             }
     
                             int NOISE_getNumInputs(Noise *n){
-                                return 0;
+                                return n->getNumInputs();
                             }
     
                             int NOISE_getNumOutputs(Noise *n){
@@ -292,22 +314,35 @@
                             }
 
                             void NOISE_destructor(Noise *n) {
+                                for (int i = 0; i < numInputs; i++) {
+                                    delete fInChannel[i];
+                                }
+        
+                                for (int i = 0; i < numOutputs; i++) {
+                                    delete fOutChannel[i];
+                                }
                                 delete n;
                             }
                         }
+
+                        // Number of channels gotten from getNumInputs / getNumOutputs
+
+                        // fOutChannel[i] = (float*)ioData->mBuffers[i].mData;
+                        
                         ```
                     </section>
                     <section data-markdown>
-                        We can then compile the resulting c++ file to asm.js using emscripten with the following command
+                        We can then compile the resulting C++ file to asm.js using emscripten with the following command
                         ```
-                        emcc cpp/noise-emscripten.cpp -o js/noise-emscripten.js \
+                        emcc cpp/faust-noise.cpp -o js/faust-noise-temp.js \
                         -s EXPORTED_FUNCTIONS="['_NOISE_constructor','_NOISE_destructor', \
                         '_NOISE_compute', '_NOISE_getNumInputs', '_NOISE_getNumOutputs']"
+                        
                         ```
                         Which creates this [JavaScript file](https://gist.github.com/TheAlphaNerd/5710239#file-noise-emscripten-js)
                     </section>
                     <section data-markdown>
-                        Finally we apply the following JavaScript wrapper in order to break out the functions we wrapped earlier in c++
+                        Finally we apply the following JavaScript wrapper in order to break out the functions we wrapped earlier in C++
                         ```
                         // Adapted From https://gist.github.com/camupod/5640386
 
@@ -361,25 +396,54 @@
                         #But does it work?
                     </section>
                     <section data-markdown>
-                        ##not exactly...
+                        #Sure,
+                        #[take a listen](demo/index.html)
+                    </section>
+                    <section data-markdown>
+                        ##But it is unnecessarily complicated
+                    </section>
+                </section>
+                <section>
+                    <section data-markdown>
+                        ###Managing memory in C++ in a way to maintain persistence when translated to JavaScript can be tricky.  
+                    </section>
+                    <section data-markdown>
+                        ###Specifically because faust represents inputs and output as a Float **
+                    </section>
+                    <section data-markdown>
+                        That means the input and output variables are in fact a pointer to an array of channels
+                    </section>
+                    <section data-markdown>
+                        Each channel in the array is a pointer to a buffer
+                    </section>
+                    <section data-markdown>
+                        Each buffer is an array consisting of a number of pointers to the values of the samples represented as a floating point number between -1 and 1.
+                    </section>
+                    <section data-markdown>
+                        ![wat?](img/wat.jpeg)
+                    </section>
+                </section>
+                                
+                <section>
+                    <section data-markdown>
+                        ##This seems unnecessarily complicated
+                    </section>
+                    <section data-markdown>
+                        ##Why should I be spending my time and memory managing these pointers?
                     </section>
                 </section>
                 
                 <section>
                     <section data-markdown>
-                        Unfortunately some of the semantics of C++ do not translate perfectly to JavaScript, the unfortunate side effect of moving from an Object Oriented language to a Functional Language.
-                    </section>
-                </section>
-                
-                <section>
-                    <section data-markdown>
-                        ##But didn't you say Faust is Functional?
+                        ##But didn't I say Faust is Functional?
                     </section>
                     <section data-markdown>
                         ##Indeed it is
                     </section>
                     <section data-markdown>
-                        ##So why are you going from Functional -> Object Oriented -> Functional
+                        ###So why are am I going from 
+                        
+                        Functional -> Object Oriented -> Functional
                     </section>
                     <section data-markdown>
                         ![Clever Girl](img/clever-girl.png)
@@ -407,9 +471,9 @@
                         ##Faust -> asm.js directly
                     </section>
                     <section data-markdown>
-                        ###Prior to being compiled to c++, faust is compiled to Faust Intermediate Representation (FIR)  
+                        ###Prior to being compiled to C++, faust is compiled to Faust Intermediate Representation (FIR)  
                         
-                        It is in this form that Faust is compiled to specific language architectures such as c++ and java.  
+                        It is in this form that Faust is compiled to specific language architectures such as C++ and java.  
                     </section>
                     <section data-markdown>
                         ##It is from FIR that we can compile directly to asm.js
